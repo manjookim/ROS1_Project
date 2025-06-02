@@ -1,0 +1,8 @@
+<launch>
+  <node pkg="image_view" type="image_view" name="image_view" output="screen">
+    <remap from="image" to="/camera/image_raw" />
+  </node>
+</launch>
+
+# 카메라 영상을 터미널에서 GUI로 띄워줌 (rqt 없이)
+# 토픽 이름 /camera/image_raw는 실제 퍼블리시되는 카메라 토픽에 맞게 바꿔야함.
