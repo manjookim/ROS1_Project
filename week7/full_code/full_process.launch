@@ -1,0 +1,17 @@
+<launch>
+  <!-- 카메라 실행 -->
+  <include file="$(find camera_pose_pkg)/launch/turtlebot3_camera.launch" />
+
+  <!-- 영상 확인 -->
+  <include file="$(find camera_pose_pkg)/launch/image_view.launch" />
+
+  <!-- 이미지 저장 노드 -->
+  <include file="$(find camera_pose_pkg)/launch/image_saver.launch" />
+
+  <!-- PnP 계산 노드 -->
+  <include file="$(find camera_pose_pkg)/launch/solve_pnp.launch" />
+</launch>
+
+# 지금까지 만든 모든 launch 파일을 한 번에 실행
+# 하나의 명령어로 전체 과정을 실행한다.
+roslaunch camera_pose_pkg full_process.launch
