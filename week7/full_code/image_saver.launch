@@ -1,0 +1,11 @@
+<launch>
+  <node pkg="image_view" type="image_saver" name="image_saver" output="screen">
+    <remap from="image" to="/camera/image_raw" />
+    <param name="~filename_format" value="$(env HOME)/catkin_ws/src/camera_pose_pkg/calib_images/img%03d.jpg" />
+  </node>
+</launch>
+
+# image_saver는 image_view 패키지에 포함된 실행 파일
+# filename_format 경로는 저장 위치 (필요하면 바꿔야함 !)
+# img001.jpg, img002.jpg, ... 형식으로 자동 저장됨
+# 저장하려면 Ctrl+C 또는 저장 시점을 노드 내부에서 설정해야 함
