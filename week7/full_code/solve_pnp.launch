@@ -1,0 +1,7 @@
+<launch>
+  <node pkg="camera_pose_pkg" type="solve_pnp.py" name="solve_pnp" output="screen" />
+</launch>
+
+# solve_pnp.py를 실행하는 launch 파일
+# camera_pose_pkg는 우가 만든 패키지 이름
+# .py 파일은 scripts/ 폴더에 있어야 하고, 실행 권한도 있어야 함
