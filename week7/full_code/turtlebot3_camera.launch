@@ -1,0 +1,13 @@
+<launch>
+  <arg name="camera_name" default="raspicam" />
+  <arg name="frame_id" default="camera" />
+
+  <node pkg="raspicam_node" type="raspicam_node" name="$(arg camera_name)" output="screen">
+    <param name="frame_id" value="$(arg frame_id)" />
+    <param name="width" value="640" />
+    <param name="height" value="480" />
+    <param name="fps" value="30" />
+  </node>
+</launch>
+
+# 이 경우 /camera/image 또는 /raspicam/image 등의 토픽이 생성됨.
