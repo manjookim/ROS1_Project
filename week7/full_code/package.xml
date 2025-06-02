@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>camera_pose_pkg</name>
+  <version>0.0.1</version>
+  <description>The camera_pose_pkg package</description>
+
+  <maintainer email="you@example.com">Your Name</maintainer>
+  <license>MIT</license>
+
+  <!-- 필수 종속 패키지 -->
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>rospy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
+
+  <!-- OpenCV 사용 시 -->
+  <exec_depend>opencv2</exec_depend>
+
+  <export></export>
+</package>
