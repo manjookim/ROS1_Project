@@ -1,0 +1,20 @@
+#calibration 패키지 만들기
+cd ~/catkin_ws/src/school_classes
+catkin_create_pkg calibration std_msgs rospy roscpp sensor_msgs
+
+#실행 권한 부여
+chmod +x calibration/scripts/calibrate_camera.py
+
+#CMakeLists.txt에 추가
+catkin_install_python(PROGRAMS
+  scripts/calibrate_camera.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+#카메라 실행
+#1. 원격 연결 터미널
+roslaunch turtlebot3_bringup turtlebot3_rpicamera.launch
+#2. 다른 터미널
+roslaunch school_classes image_subscriber_node.launch
+
+
