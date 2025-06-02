@@ -1,0 +1,31 @@
+# 전체 파일 종류
+| 번호 | 파일명                                              | 종류      | 역할                                   |
+| -- | --------------------------------------------------- - | --------- | ------------------------------------ |
+| 1  | `usb_cam_node.launch` 또는 `turtlebot3_camera.launch` | `.launch` | 카메라 노드 실행 (이미지 퍼블리시)                 |
+| 2  | `image_saver.launch`                                  | `.launch` | `image_saver` 노드 실행해서 이미지 저장         |
+| 3  | `image_view.launch`                                   | `.launch` | 카메라 영상 실시간 확인용 (`rqt_image_view` 대체) |
+| 4  | `solve_pnp.launch`                                    | `.launch` | Pose 추정용 파이썬 노드 실행 (`solve_pnp.py`)  |
+| 5  | `solve_pnp.py`                                        | `.py`     | 이미지 분석 + PnP 계산 노드                   |
+| 6  | `save_image.sh`                                       | `.sh`     | image\_saver와 연결되는 자동 저장 스크립트 (선택)   |
+| 7  | `make_list.py`                                        | `.py`     | 이미지 리스트 자동 생성 (make\_list.txt 생성용)   |
+| 8  | `full_process.launch`                                 | `.launch` | 위 모든 걸 한 번에 실행하는 **통합 실행 파일**        |
+
+
+# 컴퓨터 파일 구조
+camera_pose_pkg/
+├── launch/
+│   ├── turtlebot3_camera.launch 
+│   ├── image_view.launch
+│   ├── image_saver.launch
+│   ├── solve_pnp.launch
+│   └── full_process.launch     <-- 교수님이 말한 "통합 관리용"
+├── scripts/
+│   ├── solve_pnp.py
+│   └── make_list.py
+├── calib_images/
+│   └── img001.jpg ...
+├── CMakeLists.txt
+└── package.xml
+
+roslaunch camera_pose_pkg full_process.launch
+
