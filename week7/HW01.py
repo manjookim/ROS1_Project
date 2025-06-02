@@ -102,6 +102,24 @@ else:
 #8 코드 실행
 rosrun camera_pose_pkg solve_pnp.py
 
-                                              
-                                              
+
+#9 사용 전  !! 준비사항
+1. solve_pnp.py는 catkin_ws/src/camera_pose_pkg/scripts/ 폴더에 저장
+2. 실행 가능하도록 퍼미션 부여:
+  chmod +x solve_pnp.py
+3. 실행 명령어:
+  rosrun camera_pose_pkg solve_pnp.py
+
+#10 폴더 구성 -> 참고.. 
+~/catkin_ws/
+├── src/
+│   └── camera_pose_pkg/
+│       ├── launch/
+│       │   └── camera_view.launch  ← (필요시)
+│       ├── scripts/
+│       │   └── solve_pnp.py
+│       └── ...
+├── calib_images/
+│   └── img001.jpg ...
+├── make_list.txt                                      
                                               
