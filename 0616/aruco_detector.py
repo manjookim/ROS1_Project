@@ -21,10 +21,10 @@ except FileNotFoundError:
     rospy.logwarn("경고: 'camera_calibration.pkl' 파일을 찾을 수 없습니다. 기본 카메라 파라미터를 사용합니다.")
     rospy.logwarn("정확한 위치 추정을 위해 카메라 캘리브레이션이 필수적입니다.")
     # 예시 값 (실제 카메라 캘리브레이션으로 얻은 값을 사용해야 함)
-    mtx = np.array([[500.0, 0, 320.0],
-                    [0, 500.0, 240.0],
-                    [0, 0, 1.0]], dtype=np.float32)
-    dist = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32) # 왜곡 계수 (보통 0에 가깝거나 작음)
+    mtx = np.array([[506.73737097, 0, 316.26249958],
+                    [0, 506.68959373, 235.44052887],
+                    [0, 0, 1]], dtype=np.float32)
+    dist = np.array([0.146345454, 0.04371783, 0.00114179444,0.00140841683, -1.19683513], dtype=np.float32) # 왜곡 계수 (보통 0에 가깝거나 작음)
 
 # --- ArUco 마커 설정 ---
 ARUCO_DICT = aruco.getPredefinedDictionary(aruco.DICT_4X4_100)
