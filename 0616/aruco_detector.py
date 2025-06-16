@@ -11,6 +11,7 @@ from geometry_msgs.msg import PoseStamped
 from tf.transformations import quaternion_from_matrix # rvec을 쿼터니언으로 변환하기 위함
 
 # --- 카메라 내부 파라미터 로드 또는 정의 ---
+'''
 try:
     with open('camera_calibration.pkl', 'rb') as f:
         camera_params = pickle.load(f)
@@ -21,6 +22,7 @@ except FileNotFoundError:
     rospy.logwarn("경고: 'camera_calibration.pkl' 파일을 찾을 수 없습니다. 기본 카메라 파라미터를 사용합니다.")
     rospy.logwarn("정확한 위치 추정을 위해 카메라 캘리브레이션이 필수적입니다.")
     # 예시 값 (실제 카메라 캘리브레이션으로 얻은 값을 사용해야 함)
+'''
     mtx = np.array([[506.73737097, 0, 316.26249958],
                     [0, 506.68959373, 235.44052887],
                     [0, 0, 1]], dtype=np.float32)
