@@ -2,12 +2,7 @@ import cv2
 import numpy as np
 
 # 2D 이미지 상의 점들 (이미지 좌표계)
-points_2D = np.array([
-    (155, 330),
-    (210, 280),
-    (320, 280),
-    (415, 280),
-], dtype="double")
+points_2D = np.array([(102, 269), (198, 262), (287, 301), (373, 301), (491, 291), (555, 288)], dtype="double")
 
 # 3D 실제 공간의 점들 (월드 좌표계)
 points_3D = np.array([
