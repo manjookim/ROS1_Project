@@ -1,3 +1,6 @@
+#(수진 컴퓨터 기준) 정보 추가
+source ~/ros_remote.sh
+
 #1 원격 PC 접속
 ssh ubuntu@172.20.10.10
 
@@ -5,7 +8,7 @@ ssh ubuntu@172.20.10.10
 sudo apt-get install ros-noetic-slam-gmapping
 
 #3 /scan , /odom 있는지 확인
-export TURTLEBOT3_MODEL = burger #모델 연결 (*원격PC)
+export TURTLEBOT3_MODEL=burger #모델 연결 (*원격PC)
 rostopic list
   #/scan 존재 X + #/odom 존재 X
   roslaunch turtlebot3_bringup turtlebot3_robot.launch
