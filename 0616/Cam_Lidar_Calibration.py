@@ -14,7 +14,7 @@ points_3D = np.array([
 
 # 🔽 네가 이미 갖고 있는 intrinsic 값 불러오기
 # 예: np.load("camera_intrinsics.npz") 또는 직접 행렬로 설정
-cameraMatrix = np.array([[
+cameraMatrix = np.array([
     [600.0,   0.0, 320.0],
     [  0.0, 600.0, 240.0],
     [  0.0,   0.0,   1.0]
