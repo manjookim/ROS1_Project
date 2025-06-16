@@ -14,9 +14,11 @@ points_3D = np.array([
 
 # 🔽 네가 이미 갖고 있는 intrinsic 값 불러오기
 # 예: np.load("camera_intrinsics.npz") 또는 직접 행렬로 설정
-cameraMatrix = np.array([[fx,  0, cx],
-                         [ 0, fy, cy],
-                         [ 0,  0,  1]], dtype="double")
+cameraMatrix = np.array([[
+    [600.0,   0.0, 320.0],
+    [  0.0, 600.0, 240.0],
+    [  0.0,   0.0,   1.0]
+], dtype="double")
 
 # 🔽 왜곡 계수도 이미 있다면 같이 사용
 dist_coeffs = np.array([k1, k2, p1, p2, k3], dtype="double")
