@@ -1,97 +1,101 @@
-#!/usr/bin/env python3
 import rospy
 import cv2
 import cv2.aruco as aruco
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
-from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 import numpy as np
 import tf.transformations as tf_trans
+from nav_msgs.msg import Odometry
 
 class ArucoDocking:
     def __init__(self):
         rospy.init_node("aruco_docking_node")
-
-        # camera intrinsic parameter
-        self.camera_matrix = np.array([
-            [506.73737097, 0, 316.26249958],
-            [0, 506.68959373, 235.44052887],
-            [0, 0, 1]
-        ])
-        self.dist_coeffs = np.array([0.146345454, 0.04371783, 0.00114179444,
-                                     0.00140841683, -1.19683513])
-
-        # Publisher / Subscriber
+        
+        # 카메라 파라미터 (기존과 동일)
+        self.marker_length = rospy.get_param("~marker_length", 0.1)
+        self.camera_matrix = np.array(rospy.get_param("~camera_matrix")).reshape((3,3))
+        self.dist_coeffs = np.array(rospy.get_param("~dist_coeffs"))
+        
+        # 상태 변수 추가
+        self.state = "SEARCH"  # SEARCH, ALIGN, APPROACH, COMPLETED
+        self.target_distance = 0.1  # 10cm
+        
+        # 제어 파라미터
+        self.linear_speed = 0.15
+        self.angular_speed = 0.5
+        
+        # ROS 인터페이스
         self.cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
         rospy.Subscriber("/odom", Odometry, self.odom_callback)
         rospy.Subscriber("/camera/image", Image, self.image_callback)
 
-        # Bridge & ArUco setting
         self.bridge = CvBridge()
         self.aruco_dict = aruco.Dictionary_get(aruco.DICT_4X4_50)
         self.aruco_params = aruco.DetectorParameters_create()
-
-        # Robot pose
-        self.robot_x = 0
-        self.robot_y = 0
-        self.robot_yaw = 0
-
+        
+        # 로봇 상태
+        self.robot_pose = [0, 0, 0]  # x, y, yaw
+        
         rospy.spin()
 
     def odom_callback(self, msg):
-        self.robot_x = msg.pose.pose.position.x
-        self.robot_y = msg.pose.pose.position.y
-
+        # 오도메트리 데이터 활용
+        self.robot_pose[0] = msg.pose.pose.position.x
+        self.robot_pose[1] = msg.pose.pose.position.y
         q = msg.pose.pose.orientation
-        _, _, yaw = tf_trans.euler_from_quaternion([q.x, q.y, q.z, q.w])
-        self.robot_yaw = yaw
+        _, _, self.robot_pose[2] = tf_trans.euler_from_quaternion([q.x, q.y, q.z, q.w])
 
     def image_callback(self, msg):
-        frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        frame = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
         corners, ids, _ = aruco.detectMarkers(frame, self.aruco_dict, parameters=self.aruco_params)
-
+        
         if ids is not None and 1 in ids:
             idx = list(ids.flatten()).index(1)
-            rvec, tvec, _ = cv2.aruco.estimatePoseSingleMarkers(
-                corners[idx], 0.05, self.camera_matrix, self.dist_coeffs)
-
-            # distance and angle to marker
-            x, y, z = tvec[0][0]
-            theta_a = np.arctan2(x, z)
-
-            # 시각화
+            rvec, tvec, _ = aruco.estimatePoseSingleMarkers(
+                corners[idx], self.marker_length, self.camera_matrix, self.dist_coeffs
+            )
+            
+            # 마커 위치 (카메라 좌표계)
+            x, y, z = tvec[0][0]  # x: 좌우, y: 상하, z: 전방
+            distance = np.sqrt(x**2 + z**2)  # 2D 거리
+            angle = np.arctan2(x, z)         # 수평 각도
+            
+            # 시각화 
             aruco.drawDetectedMarkers(frame, corners)
             cv2.aruco.drawAxis(frame, self.camera_matrix, self.dist_coeffs, rvec, tvec, 0.03)
             cv2.imshow("ArUco Detection", frame)
             cv2.waitKey(1)
+            
+            # 상태 머신 기반 제어
+            self.state_machine(distance, angle)
 
-            # 제어 로직: 두 단계로 나눠서 이동
-            if abs(y) > 0.15:
-                self.move_straight(y)
+    def state_machine(self, distance, angle):
+        twist = Twist()
+        
+        if self.state == "SEARCH":
+            # 마커 발견 시 정렬 단계로
+            self.state = "ALIGN"
+            
+        elif self.state == "ALIGN":
+            # 각도 정렬
+            if abs(angle) > 0.1:  # ~5.7도
+                twist.angular.z = self.angular_speed * (-1 if angle < 0 else 1)
             else:
-                self.rotate_to(theta_a)
-                self.move_straight(z - 0.10)  # 10cm 앞에서 멈춤
-
-    def move_straight(self, distance):
-        twist = Twist()
-        twist.linear.x = 0.15 if distance > 0 else -0.15
-        duration = abs(distance / twist.linear.x)
-        self.publish_cmd(twist, duration)
-
-    def rotate_to(self, angle):
-        twist = Twist()
-        twist.angular.z = 0.5 if angle > 0 else -0.5
-        duration = abs(angle / twist.angular.z)
-        self.publish_cmd(twist, duration)
-
-    def publish_cmd(self, twist, duration):
-        rate = rospy.Rate(10)
-        ticks = int(duration * 10)
-        for _ in range(ticks):
-            self.cmd_pub.publish(twist)
-            rate.sleep()
-        self.cmd_pub.publish(Twist())
+                self.state = "APPROACH"
+                
+        elif self.state == "APPROACH":
+            # 전진 접근
+            if distance > self.target_distance:
+                twist.linear.x = self.linear_speed
+            else:
+                self.state = "COMPLETED"
+                
+        elif self.state == "COMPLETED":
+            # 정지
+            pass
+            
+        self.cmd_pub.publish(twist)
 
 if __name__ == '__main__':
     try:
