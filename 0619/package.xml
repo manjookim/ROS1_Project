@@ -2,19 +2,16 @@
 <package format="2">
   <name>docking_project</name>
   <version>0.0.0</version>
-  <description>The docking_project package</description>
-
-  <maintainer email="your@email.com">Your Name</maintainer>
+  <description>The docking_project package for ArUco marker based robot docking.</description> <maintainer email="your@email.com">Your Name</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>rospy</depend>
-  <depend>std_msgs</depend>
-  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend> <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>cv_bridge</depend>
-
-  <export></export>
+  <depend>numpy</depend>       <depend>rpicamera_node</depend> <depend>aruco_ros</depend>   <export>
+    <build_type>catkin</build_type>
+  </export>
 </package>
-
