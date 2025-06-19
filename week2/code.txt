@@ -34,7 +34,7 @@ rostopic echo /scan
 rosrun map_server map_saver -f ~/my_map
 
 #11 navigation 맵 창 불러오기 -> HOME 부분 꼭 대문자로 !
-roslaunch turtlebot3_navagation turtlebot3_navigation.launch map_file:=$HOME/map.yaml
+roslaunch turtlebot3_navigation turtlebot3_navigation.launch map_file:=$HOME/map1.yaml
 
 12 터미널 창에서 이동하기
 rostopic pub -1 /move_base_simple/goal geometry_msgs/PoseStamped -- '[0, [0,0], "map"]' '[[0,0.2,0], [0,0,0,1]]'
