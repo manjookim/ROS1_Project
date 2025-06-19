@@ -1,8 +1,8 @@
-shutdown_costmaps: false
-controller_frequency: 10.0
-planner_frequency: 3.0
-planner_patience: 3.0
-controller_patience: 5.0
-conservative_reset_dist: 2.0
-oscillation_timeout: 5.0
-oscillation_distance: 0.2
+shutdown_costmaps: false        # unchanged
+controller_frequency: 12.0     # 10.0 -> 12.0 (더 빠른 제어 주기로 반응성 향상)
+planner_frequency: 5.0         # 3.0 -> 5.0 (더 빈번한 경로 계획으로 적응성 향상)
+planner_patience: 2.0          # 3.0 -> 2.0 (경로 계획 대기 시간 단축)
+controller_patience: 3.0       # 5.0 -> 3.0 (제어기 대기 시간 단축)
+conservative_reset_dist: 1.5   # 2.0 -> 1.5 (보수적 리셋 거리 단축)
+oscillation_timeout: 3.0       # 5.0 -> 3.0 (진동 타임아웃 단축으로 빠른 복구)
+oscillation_distance: 0.15     # 0.2 -> 0.15 (진동 감지 거리 단축)
