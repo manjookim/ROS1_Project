@@ -14,16 +14,16 @@ class ArucoDockingNode:
         rospy.init_node('aruco_docking_node', anonymous=True)
 
         # 카메라 파라미터
-        self.marker_length = rospy.get_param("~marker_length", 0.1)
+        self.marker_length = rospy.get_param("~marker_length", 0.17)  # 17cm 마커
         self.camera_matrix = np.array(rospy.get_param("~camera_matrix")).reshape((3,3))
         self.dist_coeffs = np.array(rospy.get_param("~dist_coeffs"))
 
-        # 도킹 파라미터 (개선됨)
+        # 도킹 파라미터 (17cm 마커에 최적화)
         self.target_id = 1
-        self.target_distance = 0.015  # 1.5cm에서 정지
+        self.target_distance = 0.02   # 2cm에서 정지 (큰 마커이므로 조금 더 여유)
         self.angle_threshold = 0.087  # 5도 (0.087 라디안)
-        self.approach_distance = 1.0   # 1m까지 접근 (30-40cm에서도 인식하도록)
-        self.max_detection_distance = 1.5  # 최대 검출 거리 1.5m
+        self.approach_distance = 1.2  # 1.2m까지 접근 (큰 마커는 더 멀리서 검출 가능)
+        self.max_detection_distance = 2.0  # 최대 검출 거리 2m (17cm 마커는 멀리서도 잘 보임)
         
         # 상태 관리
         self.state = "SEARCHING"  # SEARCHING, ALIGNING, APPROACHING, DOCKED
@@ -45,8 +45,9 @@ class ArucoDockingNode:
         self.initial_yaw = None
         self.markers_detected_count = 0  # 디버깅용
         
-        rospy.loginfo("ArUco Docking Node - Enhanced Search Started")
+        rospy.loginfo("ArUco Docking Node - 17cm Marker Optimized")
         rospy.loginfo(f"Target: ID={self.target_id}, Distance={self.target_distance*100:.1f}cm")
+        rospy.loginfo(f"Marker size: {self.marker_length*100:.0f}cm")
         rospy.loginfo(f"Max detection range: {self.max_detection_distance*100:.0f}cm")
 
     def odom_callback(self, msg):
@@ -70,12 +71,12 @@ class ArucoDockingNode:
             aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
             parameters = aruco.DetectorParameters()
             
-            # 검출 파라미터 조정 (원거리 검출 향상)
+            # 검출 파라미터 조정 (17cm 큰 마커용)
             parameters.adaptiveThreshWinSizeMin = 3
             parameters.adaptiveThreshWinSizeMax = 23
             parameters.adaptiveThreshWinSizeStep = 10
-            parameters.minMarkerPerimeterRate = 0.03  # 더 작은 마커도 검출
-            parameters.maxMarkerPerimeterRate = 4.0
+            parameters.minMarkerPerimeterRate = 0.02  # 큰 마커이므로 더 관대하게
+            parameters.maxMarkerPerimeterRate = 5.0   # 큰 마커 검출 범위 확대
             
             corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
 
@@ -147,7 +148,7 @@ class ArucoDockingNode:
             rospy.loginfo(f"🎯 DOCKED! Distance: {distance*100:.1f}cm")
             return
         
-        # 너무 멀리 있으면 접근부터
+        # 너무 멀리 있으면 접근부터 (17cm 마커는 더 멀리서 검출됨)
         if distance > self.approach_distance:
             self.state = "APPROACHING"
             self.approach_marker_far(distance, yaw)
@@ -204,12 +205,12 @@ class ArucoDockingNode:
             twist.angular.z = 0.6 * (-1 if yaw > 0 else 1)
             twist.linear.x = 0.1  # 천천히 전진하면서 회전
         else:
-            # 거리에 따른 속도 조절
-            if distance > 0.8:  # 80cm 이상
-                twist.linear.x = 0.3
-            elif distance > 0.5:  # 50~80cm
-                twist.linear.x = 0.2
-            else:  # 50cm 이하
+            # 거리에 따른 속도 조절 (17cm 마커 기준)
+            if distance > 1.0:  # 100cm 이상
+                twist.linear.x = 0.35  # 큰 마커이므로 더 빠르게 접근 가능
+            elif distance > 0.6:  # 60~100cm
+                twist.linear.x = 0.25
+            else:  # 60cm 이하
                 twist.linear.x = 0.15
             
             # 미세 조정
