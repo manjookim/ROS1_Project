@@ -102,28 +102,40 @@ class ArucoDockingNode:
 
     def control_robot(self, distance, filtered_yaw):
         twist = Twist()
-        max_angular_speed = 1.0
-        min_forward_speed = 0.05
+        max_angular_speed = 0.8  # 회전 속도 제한 (너무 빠른 회전 방지)
+        min_forward_speed = 0.1   # 최소 전진 속도 증가
         
-        # 1. 회전 제어 (필터링된 yaw 사용)
-        twist.angular.z = np.clip(0.7 * filtered_yaw, -max_angular_speed, max_angular_speed)
-        
-        # 2. 전진 제어 (거리 + 각도 종속)
-        if distance > self.target_distance:
-            forward_factor = max(0.2, math.cos(abs(filtered_yaw)))
-            base_speed = 0.4 * (distance - self.target_distance)
-            twist.linear.x = max(min_forward_speed, base_speed * forward_factor)
+        # 1. 방향 정렬 단계 (중요!)
+        if abs(filtered_yaw) > 0.2:  # 11.5° 이상 오차
+            # 우선 방향 정렬에 집중
+            twist.angular.z = np.clip(0.6 * filtered_yaw, -max_angular_speed, max_angular_speed)
             
-            # 근접 구간 감속
-            if distance < 0.5:  # 50cm 이내
-                speed_reduction = max(0.3, distance / 0.5)
-                twist.linear.x *= speed_reduction
+            # 전진은 최소한으로 유지 (마커 추적 유지)
+            twist.linear.x = min_forward_speed * 0.3
+            rospy.loginfo(f"ALIGNING: {math.degrees(filtered_yaw):.1f}°")
+        
+        # 2. 전진 단계 (방향이 어느정도 정렬된 후)
+        elif distance > self.target_distance:
+            # 방향 미세 조정 + 전진
+            twist.angular.z = 0.4 * filtered_yaw  # 더 약한 회전
+            
+            # 전진 속도 계산 (거리 비례)
+            base_speed = 0.3 * (distance - self.target_distance)
+            twist.linear.x = max(min_forward_speed, base_speed)
+            
+            # 근접 감속
+            if distance < 0.5:
+                twist.linear.x *= max(0.4, distance/0.5)
+            rospy.loginfo(f"APPROACHING: {distance*100:.1f}cm")
+        
+        # 3. 도킹 완료
         else:
             twist.linear.x = 0.0
+            twist.angular.z = 0.0
+            rospy.loginfo("DOCKING COMPLETED!")
         
-        # 3. 로깅
-        rospy.loginfo(f"Linear: {twist.linear.x:.2f}m/s, FusedYaw: {math.degrees(filtered_yaw):.1f}°")
         self.cmd_pub.publish(twist)
+
 
     def stop_robot(self):
         twist = Twist()
