@@ -1,23 +1,23 @@
 TrajectoryPlannerROS:
-# Robot Configuration Parameters - Precision docking optimized
-  max_vel_x: 0.12        # 0.26 -> 0.12 (매우 느린 속도로 정밀 제어)
-  min_vel_x: 0.03        # 0.10 -> 0.03 (미세 조정을 위한 최소 속도)
-  max_vel_theta: 0.8     # 2.0 -> 0.8 (정밀한 각도 조정)
-  min_vel_theta: -0.8    # -2.0 -> -0.8 (대칭적 회전 제한)
-  min_in_place_vel_theta: 0.15  # 0.3 -> 0.15 (매우 부드러운 제자리 회전)
-  acc_lim_x: 1.0         # 2.5 -> 1.0 (매우 부드러운 가속)
-  acc_lim_y: 0.0         # unchanged (differential drive)
-  acc_lim_theta: 1.5     # 3.2 -> 1.5 (부드러운 각가속도)
+# Robot Configuration Parameters - Balanced speed and precision
+  max_vel_x: 0.20        # 0.12 -> 0.20 (시간 단축을 위한 속도 증가)
+  min_vel_x: 0.05        # 0.03 -> 0.05 (빠른 최소 속도)
+  max_vel_theta: 1.5     # 0.8 -> 1.5 (빠른 회전으로 시간 단축)
+  min_vel_theta: -1.5    # -0.8 -> -1.5 (대칭적 회전)
+  min_in_place_vel_theta: 0.25  # 0.15 -> 0.25 (빠른 제자리 회전)
+  acc_lim_x: 2.0         # 1.0 -> 2.0 (빠른 가속으로 시간 단축)
+  acc_lim_y: 0.0         # unchanged
+  acc_lim_theta: 2.5     # 1.5 -> 2.5 (빠른 각가속도)
 
-# Goal Tolerance Parameters - High precision for 20cm radius target
-  xy_goal_tolerance: 0.08    # 0.10 -> 0.08 (20cm 반지름 내 정확한 도달)
-  yaw_goal_tolerance: 0.02   # 0.05 -> 0.02 (ArUco 마커 정렬을 위한 정밀 각도)
+# Goal Tolerance Parameters - Relaxed for speed
+  xy_goal_tolerance: 0.12    # 0.08 -> 0.12 (20cm 반지름 내에서 여유 있는 허용 오차)
+  yaw_goal_tolerance: 0.04   # 0.02 -> 0.04 (적당한 각도 허용 오차)
 
 # Differential-drive robot configuration
-  holonomic_robot: false     # unchanged
+  holonomic_robot: false
 
-# Forward Simulation Parameters - Enhanced for precision docking
-  sim_time: 2.0              # 1.2 -> 2.0 (더 긴 예측으로 정밀한 경로 계획)
-  vx_samples: 12             # 20 -> 12 (계산 부하 감소, 정밀도 유지)
-  vtheta_samples: 20         # 40 -> 20 (각도 샘플 최적화)
-  sim_granularity: 0.025     # 0.05 -> 0.025 (매우 세밀한 시뮬레이션)
+# Forward Simulation Parameters - Speed optimized
+  sim_time: 1.5              # 2.0 -> 1.5 (계산 시간 단축)
+  vx_samples: 10             # 12 -> 10 (빠른 계산)
+  vtheta_samples: 15         # 20 -> 15 (빠른 계산)
+  sim_granularity: 0.04      # 0.025 -> 0.04 (계산 부하 감소)
