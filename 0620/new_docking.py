@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import rospy
 import cv2
 import cv2.aruco as aruco
@@ -24,6 +26,7 @@ class ArucoDocking:
         # 제어 파라미터
         self.linear_speed = 0.15
         self.angular_speed = 0.5
+        self.robot_pose = [0.0, 0.0, 0.0]  # [x, y, theta] 형태로 초기화
         
         # ROS 인터페이스
         self.cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
@@ -31,8 +34,9 @@ class ArucoDocking:
         rospy.Subscriber("/camera/image", Image, self.image_callback)
 
         self.bridge = CvBridge()
-        self.aruco_dict = aruco.Dictionary_get(aruco.DICT_4X4_50)
-        self.aruco_params = aruco.DetectorParameters_create()
+        self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+        self.aruco_params = aruco.DetectorParameters()
+
         
         # 로봇 상태
         self.robot_pose = [0, 0, 0]  # x, y, yaw
@@ -63,7 +67,7 @@ class ArucoDocking:
             
             # 시각화 
             aruco.drawDetectedMarkers(frame, corners)
-            cv2.aruco.drawAxis(frame, self.camera_matrix, self.dist_coeffs, rvec, tvec, 0.03)
+            cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, rvec, tvec, 0.03)
             cv2.imshow("ArUco Detection", frame)
             cv2.waitKey(1)
             
