@@ -20,13 +20,18 @@ class ArucoDockingNode:
         
         self.target_id = 1
         self.target_distance = 0.1  # 10cm
-        self.angle_threshold = 0.15
-        self.min_forward_speed = 0.08
+        self.angle_threshold = 0.2  # 라디안 (≈11.5°)
+        self.min_forward_speed = 0.1   # 최소 전진 속도 증가
         
         # 센서 퓨전 파라미터
         self.alpha = 0.8  # 카메라 신뢰 가중치 (0.7~0.9)
         self.filtered_yaw = 0.0
         self.last_odom_yaw = 0.0
+        
+        # 탐색 모드 파라미터
+        self.search_mode = False
+        self.search_start_time = None
+        self.search_duration = 10.0  # 탐색 총 지속 시간 (초)
         
         # ROS 인터페이스
         self.bridge = CvBridge()
@@ -38,7 +43,7 @@ class ArucoDockingNode:
         self.last_marker_time = rospy.Time.now()
         self.odom_yaw = 0.0
         self.odom_received = False
-        rospy.loginfo("ArUco Docking Node (Sensor Fusion Enabled)")
+        rospy.loginfo("ArUco Docking Node (Sensor Fusion + Auto Search)")
 
     def odom_callback(self, msg):
         # 쿼터니언 → 오일러 변환 (yaw만 사용)
@@ -53,8 +58,13 @@ class ArucoDockingNode:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
             undistorted = cv2.undistort(cv_image, self.camera_matrix, self.dist_coeffs)
             gray = cv2.cvtColor(undistorted, cv2.COLOR_BGR2GRAY)
+            
+            # ArUco 마커 검출 파라미터 최적화 (ID=1 검출 강화)
             aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
             parameters = aruco.DetectorParameters()
+            parameters.minMarkerPerimeterRate = 0.01  # 더 작은 마커 검출 허용
+            parameters.polygonalApproxAccuracyRate = 0.05  # 윤곽 검출 정확도 향상
+            
             corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
             
             target_detected = False
@@ -63,11 +73,15 @@ class ArucoDockingNode:
                     if ids[i] == self.target_id:
                         self.last_marker_time = rospy.Time.now()
                         target_detected = True
+                        self.search_mode = False  # 마커 감지 시 탐색 모드 해제
+                        
                         rvec, tvec, _ = aruco.estimatePoseSingleMarkers(
                             [corners[i]], self.marker_length, self.camera_matrix, self.dist_coeffs
                         )
-                        dx = tvec[0][0][0]
-                        dz = tvec[0][0][2]
+                        
+                        # 마커 위치 정보 추출
+                        dx = tvec[0][0][0]  # x축(좌우) 거리
+                        dz = tvec[0][0][2]  # z축(전방) 거리
                         horizontal_distance = math.sqrt(dx**2 + dz**2)
                         yaw_camera = math.atan2(dx, dz)
                         
@@ -87,48 +101,90 @@ class ArucoDockingNode:
                         else:
                             self.filtered_yaw = yaw_camera
                         
-                        # 필터링된 yaw로 제어
+                        # 제어 명령 생성
                         self.control_robot(horizontal_distance, self.filtered_yaw)
+                        
+                        # 디버깅 시각화
                         self.visualize(undistorted, [corners[i]], [ids[i]], rvec, tvec, 
                                       horizontal_distance, yaw_camera, self.filtered_yaw)
                         break
+            
+            # 마커 미감지 시 탐색 모드 활성화
             if not target_detected:
-                if (rospy.Time.now() - self.last_marker_time).to_sec() > 5.0:
+                # 2초간 마커 미감지 시 탐색 모드 시작
+                if (rospy.Time.now() - self.last_marker_time).to_sec() > 2.0:
+                    if not self.search_mode:
+                        self.search_mode = True
+                        self.search_start_time = rospy.Time.now()
+                        rospy.loginfo("Starting search mode...")
+                    
+                    # 탐색 모드 동작
+                    self.execute_search_mode()
+                else:
+                    # 아직 탐색 모드 시작 전
                     self.stop_robot()
+                    
         except CvBridgeError as e:
             rospy.logerr(f"CvBridge Error: {e}")
         except Exception as e:
             rospy.logerr(f"Processing Error: {e}")
 
+    def execute_search_mode(self):
+        """마커 미감지 시 탐색 동작 수행"""
+        twist = Twist()
+        elapsed = (rospy.Time.now() - self.search_start_time).to_sec()
+        
+        if elapsed < self.search_duration:
+            # 왕복 탐색 패턴: 2초 우회전 → 2초 좌회전 반복
+            search_phase = int(elapsed) % 4
+            if search_phase < 2:  # 첫 2초: 우회전
+                twist.angular.z = -0.6
+                rospy.loginfo("Searching: Turning right")
+            else:  # 다음 2초: 좌회전
+                twist.angular.z = 0.6
+                rospy.loginfo("Searching: Turning left")
+                
+            # 탐색 중 느린 전진
+            twist.linear.x = 0.05
+        else:
+            # 탐색 시간 초과
+            self.search_mode = False
+            rospy.logwarn("Search timeout! Stopping.")
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+        
+        self.cmd_pub.publish(twist)
+
     def control_robot(self, distance, filtered_yaw):
         twist = Twist()
-        max_angular_speed = 0.8  # 회전 속도 제한 (너무 빠른 회전 방지)
-        min_forward_speed = 0.1   # 최소 전진 속도 증가
+        max_angular_speed = 0.8  # 회전 속도 제한
         
-        # 1. 방향 정렬 단계 (중요!)
-        if abs(filtered_yaw) > 0.2:  # 11.5° 이상 오차
-            # 우선 방향 정렬에 집중
-            twist.angular.z = np.clip(0.6 * filtered_yaw, -max_angular_speed, max_angular_speed)
+        # 1. 방향 정렬 단계 (11.5° 이상 오차)
+        if abs(filtered_yaw) > self.angle_threshold:
+            # 방향 정렬에 집중 (느린 회전)
+            angular_gain = 0.6 * min(1.0, 1.0 / (abs(filtered_yaw) + 0.1))  # 각도에 반비례한 이득
+            twist.angular.z = np.clip(angular_gain * filtered_yaw, -max_angular_speed, max_angular_speed)
             
-            # 전진은 최소한으로 유지 (마커 추적 유지)
-            twist.linear.x = min_forward_speed * 0.3
+            # 마커 추적을 위한 최소 전진
+            twist.linear.x = self.min_forward_speed * 0.3
             rospy.loginfo(f"ALIGNING: {math.degrees(filtered_yaw):.1f}°")
         
-        # 2. 전진 단계 (방향이 어느정도 정렬된 후)
+        # 2. 전진 단계 (방향 정렬 후)
         elif distance > self.target_distance:
-            # 방향 미세 조정 + 전진
-            twist.angular.z = 0.4 * filtered_yaw  # 더 약한 회전
+            # 미세 조정 + 전진
+            twist.angular.z = 0.3 * filtered_yaw  # 약한 회전
             
-            # 전진 속도 계산 (거리 비례)
+            # 거리에 비례한 속도 (0.1m~0.5m 범위)
             base_speed = 0.3 * (distance - self.target_distance)
-            twist.linear.x = max(min_forward_speed, base_speed)
+            twist.linear.x = max(self.min_forward_speed, min(base_speed, 0.3))  # 속도 제한
             
-            # 근접 감속
+            # 근접 감속 (50cm 이내)
             if distance < 0.5:
-                twist.linear.x *= max(0.4, distance/0.5)
+                speed_factor = max(0.3, distance / 0.5)
+                twist.linear.x *= speed_factor
             rospy.loginfo(f"APPROACHING: {distance*100:.1f}cm")
         
-        # 3. 도킹 완료
+        # 3. 도킹 완료 (10cm 이내)
         else:
             twist.linear.x = 0.0
             twist.angular.z = 0.0
@@ -136,34 +192,38 @@ class ArucoDockingNode:
         
         self.cmd_pub.publish(twist)
 
-
     def stop_robot(self):
         twist = Twist()
         self.cmd_pub.publish(twist)
-        rospy.loginfo("Stopping: Target marker not detected")
 
     def visualize(self, image, corners, ids, rvec, tvec, distance, raw_yaw, filtered_yaw):
+        # 마커 경계 및 축 표시
         aruco.drawDetectedMarkers(image, corners, np.array(ids))
-        cv2.drawFrameAxes(image, self.camera_matrix, self.dist_coeffs, rvec[0], tvec[0], 0.05)
+        for i in range(len(ids)):
+            cv2.drawFrameAxes(image, self.camera_matrix, self.dist_coeffs, rvec[i], tvec[i], 0.05)
+        
+        # 마커 중심 정보
         corner = corners[0][0]
         center_x = int(np.mean(corner[:, 0]))
         center_y = int(np.mean(corner[:, 1]))
         
-        # 시각화 정보
+        # 디버깅 정보 표시
         cv2.putText(image, f"Dist: {distance*100:.1f}cm", (center_x, center_y - 40), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         cv2.putText(image, f"RawYaw: {math.degrees(raw_yaw):.1f}deg", (center_x, center_y - 20), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         cv2.putText(image, f"FusedYaw: {math.degrees(filtered_yaw):.1f}deg", (center_x, center_y), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        cv2.putText(image, f"OdomYaw: {math.degrees(self.odom_yaw):.1f}deg", (10, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
         
-        # 센서 퓨전 상태 표시
-        cv2.putText(image, f"Fusion: alpha={self.alpha}", (10, 60), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 0), 2)
+        # 탐색 모드 상태 표시
+        if self.search_mode:
+            cv2.putText(image, "SEARCH MODE", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        else:
+            cv2.putText(image, "TRACKING MODE", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         
-        cv2.imshow("ArUco Docking (Sensor Fusion)", image)
+        cv2.imshow("ArUco Docking", image)
         cv2.waitKey(1)
 
     def run(self):
