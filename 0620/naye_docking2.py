@@ -19,8 +19,8 @@ class ArucoDockingNode:
         self.dist_coeffs = np.array(rospy.get_param("~dist_coeffs"))
         
         self.target_id = 1
-        self.target_distance = 0.02  # 2cm로 변경 (1~3cm 목표)
-        self.angle_threshold = 0.1  # 라디안 (≈5.7°) - 더 정밀하게
+        self.target_distance = 0.1  
+        self.angle_threshold = 0.2  # 라디안 (≈5.7°) - 더 정밀하게
         self.min_forward_speed = 0.05   # 최소 전진 속도 감소
         
         # 센서 퓨전 파라미터
@@ -204,44 +204,40 @@ class ArucoDockingNode:
 
     def control_robot(self, distance, filtered_yaw):
         twist = Twist()
-        max_angular_speed = 0.6  # 회전 속도 제한 (더 부드럽게)
+        max_angular_speed = 0.6
+        min_forward_speed = 0.05
         
-        # 도킹 완료 체크 (1~3cm 이내)
-        if distance <= 0.02 and abs(filtered_yaw) < self.angle_threshold:  # 3cm 이내
+        # 1. 타겟 거리(10cm) 이내 진입 시 정지
+        if distance <= self.target_distance:
             twist.linear.x = 0.0
             twist.angular.z = 0.0
-            rospy.loginfo(f"[DOCKING COMPLETED] Distance: {distance*100:.1f}cm, Yaw: {math.degrees(filtered_yaw):.1f}°")
+            rospy.loginfo(f"[DOCKING COMPLETED] Distance: {distance*100:.1f}cm")
             self.cmd_pub.publish(twist)
-            return
+            return  # 함수 종료
         
-        # 1. 정밀 방향 정렬 단계 (5.7° 이상 오차)
+        # 2. 정밀 방향 정렬 단계
         if abs(filtered_yaw) > self.angle_threshold:
-            # 각도에 따른 적응적 회전 속도
             angular_speed = min(0.4, abs(filtered_yaw) * 2.0)
             twist.angular.z = np.clip(angular_speed * np.sign(filtered_yaw), 
                                     -max_angular_speed, max_angular_speed)
-            
-            # 정렬 중에는 매우 느린 전진 (마커 추적 유지)
             twist.linear.x = 0.03
             rospy.loginfo(f"[ALIGNING] Yaw Error: {math.degrees(filtered_yaw):.1f}°")
         
-        # 2. 정밀 접근 단계
+        # 3. 정밀 접근 단계
         else:
-            # 미세 각도 조정
             twist.angular.z = 0.0 * filtered_yaw
-            
-            # 거리별 적응적 속도 제어
-            if distance > 0.20:  # 20cm 이상
+            if distance > 0.20:
                 twist.linear.x = 0.20
-            elif distance > 0.10:  # 10~20cm
+            elif distance > 0.10:
                 twist.linear.x = 0.15
-            elif distance > 0.05:  # 5~10cm
+            elif distance > 0.05:
                 twist.linear.x = 0.07
-            else:  # 5cm 이하 - 매우 느리게
+            else:
                 twist.linear.x = 0.03
             rospy.loginfo(f"[FORWARD] Distance: {distance*100:.1f}cm, Speed: {twist.linear.x:.2f}")
         
         self.cmd_pub.publish(twist)
+
 
     def stop_robot(self):
         twist = Twist()
