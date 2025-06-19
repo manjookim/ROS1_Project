@@ -18,12 +18,13 @@ class ArucoDockingNode:
         self.camera_matrix = np.array(rospy.get_param("~camera_matrix")).reshape((3,3))
         self.dist_coeffs = np.array(rospy.get_param("~dist_coeffs"))
 
-        # 도킹 파라미터 (각도 임계값 조정)
+        # 도킹 파라미터 (단순화된 조건)
         self.target_id = 1
-        self.target_distance = 0.02   # 2cm에서 정지
+        self.target_distance = 0.05   # 5cm에서 정지 (3~5cm 범위)
+        self.stop_distance = 0.03     # 3cm - 최종 정지 거리
         self.angle_threshold = 0.26   # 15도 (0.26 rad ≈ 15도)
         self.wide_angle_threshold = 0.35  # 20도 (0.35 rad ≈ 20도) - 원거리용
-        self.fine_angle_threshold = 0.05  # 3도 (근접시 정밀 제어용)
+        self.stop_angle_threshold = 0.52  # 30도 (0.52 rad ≈ 30도) - 정지 조건
         self.approach_distance = 1.2  # 1.2m까지 접근
         self.max_detection_distance = 2.0  # 최대 검출 거리 2m
         
@@ -56,7 +57,8 @@ class ArucoDockingNode:
         rospy.loginfo(f"Target: ID={self.target_id}, Distance={self.target_distance*100:.1f}cm")
         rospy.loginfo(f"Marker size: {self.marker_length*100:.1f}cm (total: 17cm)")
         rospy.loginfo(f"Max detection range: {self.max_detection_distance*100:.0f}cm")
-        rospy.loginfo(f"Angle thresholds: Wide={math.degrees(self.wide_angle_threshold):.1f}°, Normal={math.degrees(self.angle_threshold):.1f}°, Fine={math.degrees(self.fine_angle_threshold):.1f}°")
+        rospy.loginfo(f"Angle thresholds: Normal={math.degrees(self.angle_threshold):.0f}°, Wide={math.degrees(self.wide_angle_threshold):.0f}°, Stop={math.degrees(self.stop_angle_threshold):.0f}°")
+        rospy.loginfo(f"Stop conditions: {self.stop_distance*100:.0f}cm~{self.target_distance*100:.0f}cm + within {math.degrees(self.stop_angle_threshold):.0f}°")
 
     def check_odom_status(self, event):
         """Odom 수신 상태 주기적 체크"""
@@ -158,26 +160,25 @@ class ArucoDockingNode:
             rospy.logerr(f"Processing Error: {e}")
 
     def process_marker_detected(self, distance, yaw):
-        """마커가 검출된 경우 상태 기반 처리 (각도 임계값 개선)"""
+        """마커가 검출된 경우 상태 기반 처리 (단순화된 정지 조건)"""
         
-        # 도킹 완료 체크
-        if distance <= self.target_distance and abs(yaw) < self.fine_angle_threshold:
+        # 🎯 단순화된 도킹 완료 조건: 30도 이내 + 3~5cm 이내
+        if distance <= self.target_distance and abs(yaw) <= self.stop_angle_threshold:
             self.state = "DOCKED"
             self.stop_robot()
             self.stable_count = 0
-            rospy.loginfo(f"🎯 DOCKED! Distance: {distance*100:.1f}cm")
+            rospy.loginfo(f"🎯 DOCKED! Distance: {distance*100:.1f}cm, Angle: {math.degrees(yaw):.1f}°")
             return
         
-        # 근접 상태에서 안정적 접근 (빙글빙글 방지)
-        if distance <= 0.15:  # 15cm 이내에서는 매우 조심스럽게
-            self.state = "FINAL_APPROACH"
-            self.final_approach(distance, yaw)
-            rospy.loginfo_throttle(1, f"🎯 FINAL: {distance*100:.1f}cm, {math.degrees(yaw):.1f}°")
+        # 3cm 이내면 무조건 정지 (안전장치)
+        if distance <= self.stop_distance:
+            self.state = "DOCKED"
+            self.stop_robot()
+            rospy.loginfo(f"🛑 EMERGENCY STOP! Too close: {distance*100:.1f}cm")
             return
         
-        # 원거리 접근 (더 관대한 각도 기준)
+        # 원거리 접근 (1.2m 이상)
         if distance > self.approach_distance:
-            # 원거리에서는 20도까지 허용
             if abs(yaw) > self.wide_angle_threshold:
                 self.state = "ALIGNING"
                 self.align_to_marker(yaw)
@@ -185,7 +186,7 @@ class ArucoDockingNode:
             else:
                 self.state = "APPROACHING"
                 self.approach_marker_far(distance, yaw)
-                rospy.loginfo_throttle(1, f"🚶 FAR APPROACH: {distance*100:.1f}cm, {math.degrees(yaw):.1f}°")
+                rospy.loginfo_throttle(1, f"🚶 FAR APPROACH: {distance*100:.1f}cm")
             self.stable_count = 0
         
         # 중거리 방향 정렬 (15도 기준)
@@ -195,16 +196,11 @@ class ArucoDockingNode:
             self.stable_count = 0
             rospy.loginfo_throttle(1, f"🔄 ALIGNING: {math.degrees(yaw):.1f}°")
         
-        # 안정적 접근
+        # 직진 접근 (빙빙 도는 것 방지)
         else:
-            if distance > self.target_distance:
-                self.state = "APPROACHING"
-                self.approach_marker(distance)
-                rospy.loginfo_throttle(1, f"➡️ APPROACHING: {distance*100:.1f}cm")
-            else:
-                self.state = "DOCKED"
-                self.stop_robot()
-                rospy.loginfo(f"🎯 DOCKED! Distance: {distance*100:.1f}cm")
+            self.state = "APPROACHING"
+            self.approach_marker_simple(distance)
+            rospy.loginfo_throttle(1, f"➡️ STRAIGHT APPROACH: {distance*100:.1f}cm")
 
     def process_marker_lost(self):
         """마커를 잃어버린 경우 처리"""
@@ -270,33 +266,21 @@ class ArucoDockingNode:
         
         self.cmd_pub.publish(twist)
 
-    def final_approach(self, distance, yaw):
-        """최종 접근 (빙글빙글 방지)"""
+    def approach_marker_simple(self, distance):
+        """단순한 직진 접근 (빙빙 도는 것 방지)"""
         twist = Twist()
+        twist.angular.z = 0.0  # 회전 완전 금지
         
-        # 매우 작은 각도 오차만 보정
-        if abs(yaw) > self.fine_angle_threshold:
-            # 매우 느린 회전으로 미세 조정
-            twist.angular.z = 0.1 * (-1 if yaw > 0 else 1)
-            twist.linear.x = 0.01  # 아주 천천히 전진
-            self.stable_count = 0
-        else:
-            # 직진만
-            twist.angular.z = 0.0
-            if distance > self.target_distance:
-                twist.linear.x = 0.02  # 매우 천천히
-                self.stable_count += 1
-            else:
-                twist.linear.x = 0.0
-                self.stable_count += 1
+        # 거리에 따른 속도 조절 (더 보수적으로)
+        if distance > 0.3:  # 30cm 이상
+            twist.linear.x = 0.15  # 천천히
+        elif distance > 0.15:  # 15~30cm
+            twist.linear.x = 0.08  # 매우 천천히
+        elif distance > 0.08:  # 8~15cm
+            twist.linear.x = 0.04  # 극도로 천천히
+        else:  # 8cm 이하
+            twist.linear.x = 0.02  # 거의 정지 수준
         
-        # 안정적으로 3번 연속 조건 만족시 도킹 완료
-        if self.stable_count > 3 and distance <= self.target_distance:
-            self.state = "DOCKED"
-            self.stop_robot()
-            rospy.loginfo(f"🎯 STABLE DOCKED! Distance: {distance*100:.1f}cm")
-            return
-            
         self.cmd_pub.publish(twist)
 
     def approach_marker(self, distance):
@@ -421,12 +405,12 @@ class ArucoDockingNode:
         cv2.putText(image, f"State: {self.state}", (10, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
         
-        # 목표 정보
-        cv2.putText(image, f"Target: ID={self.target_id}, Dist={self.target_distance*100:.1f}cm", 
+        # 목표 정보 (업데이트된 정지 조건)
+        cv2.putText(image, f"Target: ID={self.target_id}, Stop: {self.stop_distance*100:.0f}~{self.target_distance*100:.0f}cm", 
                     (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
         # 각도 임계값 정보
-        cv2.putText(image, f"Angle limits: {math.degrees(self.angle_threshold):.0f}°/{math.degrees(self.wide_angle_threshold):.0f}°", 
+        cv2.putText(image, f"Angles: {math.degrees(self.angle_threshold):.0f}°/{math.degrees(self.stop_angle_threshold):.0f}° (stop)", 
                     (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
         
         # Odom 상태 표시
