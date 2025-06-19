@@ -66,10 +66,10 @@ class ArucoDockingNode:
             # ArUco 마커 검출 파라미터 최적화
             aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
             parameters = aruco.DetectorParameters()
-            parameters.minMarkerPerimeterRate = 0.005  # 더 작은 마커도 검출
-            parameters.polygonalApproxAccuracyRate = 0.03
-            parameters.adaptiveThreshWinSizeMin = 3
-            parameters.adaptiveThreshWinSizeMax = 23
+            parameters.minMarkerPerimeterRate = 0.01  # 더 작은 마커도 검출
+            parameters.polygonalApproxAccuracyRate = 0.02
+            parameters.adaptiveThreshWinSizeMin = 5
+            parameters.adaptiveThreshWinSizeMax = 35
             parameters.adaptiveThreshWinSizeStep = 10
             
             corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
