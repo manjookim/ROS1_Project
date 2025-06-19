@@ -1,0 +1,15 @@
+<launch>
+    <!-- USB 카메라 노드 실행 -->
+    <node pkg="usb_cam" type="usb_cam_node" name="usb_cam">
+        <param name="video_device" value="/dev/video0" />
+        <param name="image_width" value="640" />
+        <param name="image_height" value="480" />
+        <param name="pixel_format" value="yuyv" />
+        <param name="camera_frame_id" value="usb_cam" />
+    </node>
+
+    <!-- 도킹 노드 실행 -->
+    <node pkg="docking_project" type="docking_node.py" name="aruco_docking_node" output="screen">
+        <rosparam file="$(find docking_project)/config/camera_calib.yaml" command="load" />
+    </node>
+</launch>
