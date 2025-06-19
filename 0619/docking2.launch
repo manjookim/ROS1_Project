@@ -1,0 +1,13 @@
+<launch>
+    <!-- RPi 카메라용 노드 실행 -->
+    <include file="$(find turtlebot3_bringup)/launch/turtlebot3_rpicamera.launch" />
+
+    <!-- 카메라 보정 파라미터 로드 -->
+    <rosparam file="$(find docking_project)/config/camera_calib.yaml" command="load" />
+
+    <!-- 도킹 노드 -->
+    <node pkg="docking_project" type="docking_node.py" name="aruco_docking_node" output="screen" />
+
+    <!-- 미로 탈출 노드 -->
+    <node pkg="docking_project" type="maze_escape_node.py" name="maze_escape_node" output="screen" />
+</launch>
