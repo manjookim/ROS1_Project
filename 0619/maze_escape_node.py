@@ -28,8 +28,8 @@ class MazeEscape:
 
         # 도킹 관련
         self.marker_length = 0.1  # meter
-        self.camera_matrix = np.array(rospy.get_param("~camera_matrix"))
-        self.dist_coeffs = np.array(rospy.get_param("~dist_coeffs"))
+        self.camera_matrix = np.array(rospy.get_param("~camera_matrix")['data']).reshape(3, 3)
+        self.dist_coeffs = np.array(rospy.get_param("~dist_coeffs")['data'])
 
     def image_callback(self, msg):
         try:
