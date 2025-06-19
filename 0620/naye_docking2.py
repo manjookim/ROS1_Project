@@ -129,11 +129,16 @@ class ArucoDockingNode:
                         self.search_start_time = rospy.Time.now()
                         self.search_phase = 0
                         self.total_search_angle = 0.0
-                        # 마지막 위치가 왼쪽이면 왼쪽부터, 오른쪽이면 오른쪽부터 탐색
+                        # 탐색 방향 설정 (마지막 마커 좌표에 따라)
                         if self.last_marker_position:
-                            self.search_direction = 1 if self.last_marker_position[0] > 0 else -1
-                        rospy.loginfo("Starting enhanced search mode...")
-                    
+                            dx = self.last_marker_position[0]
+                            if dx > 0.02:
+                                self.search_direction = 1  # 오른쪽
+                            elif dx < -0.02:
+                                self.search_direction = -1  # 왼쪽
+                            else:
+                                self.search_direction = 1  # 중심이면 기본값: 오른쪽
+
                     # 개선된 탐색 모드 실행
                     self.execute_enhanced_search()
                 else:
