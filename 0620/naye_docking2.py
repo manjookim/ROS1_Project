@@ -232,7 +232,7 @@ class ArucoDockingNode:
             
             # 거리별 적응적 속도 제어
             if distance > 0.20:  # 20cm 이상
-                twist.linear.x = 0.25
+                twist.linear.x = 0.20
             elif distance > 0.10:  # 10~20cm
                 twist.linear.x = 0.15
             elif distance > 0.05:  # 5~10cm
