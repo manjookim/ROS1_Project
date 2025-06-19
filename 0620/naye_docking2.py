@@ -290,8 +290,8 @@ class ArucoDockingNode:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         
         # 목표 거리 가이드라인
-        cv2.putText(image, f"Target: 1-3cm", (10, 60), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(image, "Detection!", (10, 90), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         
         cv2.imshow("ArUco Docking", image)
         cv2.waitKey(1)
