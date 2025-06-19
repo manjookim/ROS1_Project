@@ -31,7 +31,7 @@ roslaunch turtlebot3_teleop turtlebot3_teleop_key.launch
 rostopic echo /scan
 
 #10 map 저장하기 -> yaml + pgm  2개의 파일 생성
-rosrun map_server map_saver -f ~/my_map
+rosrun map_server map_saver -f ~/my_map2
 
 #11 navigation 맵 창 불러오기 -> HOME 부분 꼭 대문자로 !
 roslaunch turtlebot3_navigation turtlebot3_navigation.launch map_file:=$HOME/map1.yaml
