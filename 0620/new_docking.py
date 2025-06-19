@@ -13,7 +13,7 @@ class ArucoDocking:
         rospy.init_node("aruco_docking_node")
         
         # 카메라 파라미터 (기존과 동일)
-        self.marker_length = rospy.get_param("~marker_length", 0.1)
+        self.marker_length = rospy.get_param("~marker_length", 0.4)
         self.camera_matrix = np.array(rospy.get_param("~camera_matrix")).reshape((3,3))
         self.dist_coeffs = np.array(rospy.get_param("~dist_coeffs"))
         
@@ -93,7 +93,8 @@ class ArucoDocking:
                 
         elif self.state == "COMPLETED":
             # 정지
-            pass
+            #pass
+            return
             
         self.cmd_pub.publish(twist)
 
