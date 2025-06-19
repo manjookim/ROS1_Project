@@ -83,7 +83,7 @@ class ArucoDockingNode:
                         self.consecutive_detections += 1
                         
                         # 탐색 모드 해제 (안정적인 감지 후)
-                        if self.consecutive_detections >= 3:
+                        if self.consecutive_detections >= 2:
                             self.search_mode = False
                             self.search_phase = 0
                             self.total_search_angle = 0.0
@@ -207,15 +207,15 @@ class ArucoDockingNode:
         max_angular_speed = 0.6  # 회전 속도 제한 (더 부드럽게)
         
         # 도킹 완료 체크 (1~3cm 이내)
-        if distance <= 0.03:  # 3cm 이내
+        if distance <= 0.03 and abs(filtered_yaw) < self.angle_threshold:  # 3cm 이내
             twist.linear.x = 0.0
             twist.angular.z = 0.0
-            rospy.loginfo(f"DOCKING COMPLETED! Final distance: {distance*100:.1f}cm")
+            rospy.loginfo(f"[DOCKING COMPLETED] Distance: {distance*100:.1f}cm, Yaw: {math.degrees(filtered_yaw):.1f}°")
             self.cmd_pub.publish(twist)
             return
         
         # 1. 정밀 방향 정렬 단계 (5.7° 이상 오차)
-        if abs(filtered_yaw) > self.angle_threshold:
+        if abs(filtered_yaw) > angle_threshold:
             # 각도에 따른 적응적 회전 속도
             angular_speed = min(0.4, abs(filtered_yaw) * 2.0)
             twist.angular.z = np.clip(angular_speed * np.sign(filtered_yaw), 
@@ -223,12 +223,12 @@ class ArucoDockingNode:
             
             # 정렬 중에는 매우 느린 전진 (마커 추적 유지)
             twist.linear.x = 0.03
-            rospy.loginfo(f"ALIGNING: {math.degrees(filtered_yaw):.1f}°")
+            rospy.loginfo(f"[ALIGNING] Yaw Error: {math.degrees(filtered_yaw):.1f}°")
         
         # 2. 정밀 접근 단계
         else:
             # 미세 각도 조정
-            twist.angular.z = 0.2 * filtered_yaw
+            twist.angular.z = 0.0 * filtered_yaw
             
             # 거리별 적응적 속도 제어
             if distance > 0.20:  # 20cm 이상
@@ -239,8 +239,7 @@ class ArucoDockingNode:
                 twist.linear.x = 0.07
             else:  # 5cm 이하 - 매우 느리게
                 twist.linear.x = 0.03
-            
-            rospy.loginfo(f"APPROACHING: {distance*100:.1f}cm, Speed: {twist.linear.x:.3f}")
+            rospy.loginfo(f"[FORWARD] Distance: {distance*100:.1f}cm, Speed: {twist.linear.x:.2f}")
         
         self.cmd_pub.publish(twist)
 
