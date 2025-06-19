@@ -15,12 +15,14 @@ class ArucoDocking:
 
         # 파라미터
         self.marker_length = 0.1  # meter
+        # camera_matrix와 dist_coeffs는 camera_calib.yaml 파일에서 로드될 것입니다.
         self.camera_matrix = np.array(rospy.get_param("~camera_matrix"))
         self.dist_coeffs = np.array(rospy.get_param("~dist_coeffs"))
 
         # ROS 통신
         self.bridge = CvBridge()
-        self.image_sub = rospy.Subscriber("/usb_cam/image_raw", Image, self.image_callback)
+        # 수정된 부분: /usb_cam/image_raw 대신 /camera/image_raw 토픽을 구독합니다.
+        self.image_sub = rospy.Subscriber("/camera/image_raw", Image, self.image_callback)
         self.cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
 
         self.rate = rospy.Rate(10)
