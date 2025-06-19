@@ -1,0 +1,10 @@
+<launch>
+    <!-- RPi Camera (raspicam_node) 실행 -->
+    <include file="$(find raspicam_node)/launch/camera.launch" />
+
+    <!-- camera_calib.yaml 파라미터 로드 -->
+    <rosparam file="$(find docking_project)/config/camera_calib.yaml" command="load" />
+
+    <!-- Maze Escape Node 실행 -->
+    <node pkg="docking_project" type="maze_escape_node.py" name="maze_escape_node" output="screen" />
+</launch>
