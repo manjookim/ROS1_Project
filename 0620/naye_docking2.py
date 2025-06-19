@@ -232,13 +232,13 @@ class ArucoDockingNode:
             
             # 거리별 적응적 속도 제어
             if distance > 0.20:  # 20cm 이상
-                twist.linear.x = 0.15
+                twist.linear.x = 0.25
             elif distance > 0.10:  # 10~20cm
-                twist.linear.x = 0.08
+                twist.linear.x = 0.15
             elif distance > 0.05:  # 5~10cm
-                twist.linear.x = 0.04
+                twist.linear.x = 0.07
             else:  # 5cm 이하 - 매우 느리게
-                twist.linear.x = 0.02
+                twist.linear.x = 0.03
             
             rospy.loginfo(f"APPROACHING: {distance*100:.1f}cm, Speed: {twist.linear.x:.3f}")
         
