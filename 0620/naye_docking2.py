@@ -19,27 +19,22 @@ class ArucoDockingNode:
         self.dist_coeffs = np.array(rospy.get_param("~dist_coeffs"))
         
         self.target_id = 1
-        self.target_distance = 0.12  # 12cm에서 멈춤 (부딪히기 직전)
-        self.safety_distance = 0.08  # 8cm 안전 거리
-        self.angle_threshold = 0.15  # 8.6도 (더 정밀한 정렬)
+        self.target_distance = 0.02  # 2cm로 변경 (1~3cm 목표)
+        self.angle_threshold = 0.1  # 라디안 (≈5.7°) - 더 정밀하게
+        self.min_forward_speed = 0.05   # 최소 전진 속도 감소
         
         # 센서 퓨전 파라미터
-        self.alpha = 0.7  # 카메라 신뢰 가중치
+        self.alpha = 0.8  # 카메라 신뢰 가중치
         self.filtered_yaw = 0.0
         self.last_odom_yaw = 0.0
         
         # 개선된 탐색 모드 파라미터
         self.search_mode = False
         self.search_start_time = None
-        self.search_total_time = 0.0
+        self.search_phase = 0  # 탐색 단계
+        self.total_search_angle = 0.0  # 누적 회전 각도
         self.search_direction = 1  # 1: 우회전, -1: 좌회전
         self.last_marker_position = None  # 마지막 마커 위치 기억
-        self.search_phase = 0  # 0: 제자리 회전, 1: 이동하며 회전, 2: 반대 방향
-        
-        # 도킹 상태 관리
-        self.docking_state = "SEARCHING"  # SEARCHING, ALIGNING, APPROACHING, DOCKED
-        self.consecutive_detections = 0
-        self.required_detections = 3  # 안정적 검출을 위한 연속 검출 횟수
         
         # ROS 인터페이스
         self.bridge = CvBridge()
@@ -51,7 +46,8 @@ class ArucoDockingNode:
         self.last_marker_time = rospy.Time.now()
         self.odom_yaw = 0.0
         self.odom_received = False
-        rospy.loginfo("Improved ArUco Docking Node with Smart Search")
+        self.consecutive_detections = 0  # 연속 감지 횟수
+        rospy.loginfo("ArUco Docking Node (Enhanced Search + Precise Docking)")
 
     def odom_callback(self, msg):
         # 쿼터니언 → 오일러 변환 (yaw만 사용)
@@ -71,10 +67,10 @@ class ArucoDockingNode:
             aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
             parameters = aruco.DetectorParameters()
             parameters.minMarkerPerimeterRate = 0.005  # 더 작은 마커도 검출
-            parameters.maxMarkerPerimeterRate = 4.0
             parameters.polygonalApproxAccuracyRate = 0.03
-            parameters.minCornerDistanceRate = 0.05
-            parameters.minDistanceToBorder = 3
+            parameters.adaptiveThreshWinSizeMin = 3
+            parameters.adaptiveThreshWinSizeMax = 23
+            parameters.adaptiveThreshWinSizeStep = 10
             
             corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
             
@@ -82,174 +78,172 @@ class ArucoDockingNode:
             if ids is not None:
                 for i in range(len(ids)):
                     if ids[i] == self.target_id:
+                        self.last_marker_time = rospy.Time.now()
                         target_detected = True
                         self.consecutive_detections += 1
-                        self.last_marker_time = rospy.Time.now()
                         
-                        # 안정적 검출 확인
-                        if self.consecutive_detections >= self.required_detections:
+                        # 탐색 모드 해제 (안정적인 감지 후)
+                        if self.consecutive_detections >= 3:
                             self.search_mode = False
-                            
-                            rvec, tvec, _ = aruco.estimatePoseSingleMarkers(
-                                [corners[i]], self.marker_length, self.camera_matrix, self.dist_coeffs
-                            )
-                            
-                            # 마커 위치 정보 추출
-                            dx = tvec[0][0][0]  # x축(좌우) 거리
-                            dz = tvec[0][0][2]  # z축(전방) 거리
-                            horizontal_distance = math.sqrt(dx**2 + dz**2)
-                            yaw_camera = math.atan2(dx, dz)
-                            
-                            # 마지막 마커 위치 저장
-                            self.last_marker_position = (dx, dz)
-                            
-                            # 센서 퓨전
-                            self.update_sensor_fusion(yaw_camera)
-                            
-                            # 도킹 제어
-                            self.control_docking(horizontal_distance, self.filtered_yaw, dz)
-                            
-                            # 시각화
-                            self.visualize(undistorted, [corners[i]], [ids[i]], rvec, tvec, 
-                                          horizontal_distance, yaw_camera, self.filtered_yaw, dz)
+                            self.search_phase = 0
+                            self.total_search_angle = 0.0
+                        
+                        rvec, tvec, _ = aruco.estimatePoseSingleMarkers(
+                            [corners[i]], self.marker_length, self.camera_matrix, self.dist_coeffs
+                        )
+                        
+                        # 마커 위치 정보 추출
+                        dx = tvec[0][0][0]  # x축(좌우) 거리
+                        dz = tvec[0][0][2]  # z축(전방) 거리
+                        horizontal_distance = math.sqrt(dx**2 + dz**2)
+                        yaw_camera = math.atan2(dx, dz)
+                        
+                        # 마지막 마커 위치 저장
+                        self.last_marker_position = (dx, dz)
+                        
+                        # 센서 퓨전: 상보필터 적용
+                        if self.odom_received:
+                            delta_odom = self.odom_yaw - self.last_odom_yaw
+                            predicted_yaw = self.filtered_yaw - delta_odom
+                            self.filtered_yaw = self.alpha * yaw_camera + (1 - self.alpha) * predicted_yaw
+                            self.last_odom_yaw = self.odom_yaw
+                        else:
+                            self.filtered_yaw = yaw_camera
+                        
+                        # 제어 명령 생성
+                        self.control_robot(horizontal_distance, self.filtered_yaw)
+                        
+                        # 디버깅 시각화
+                        self.visualize(undistorted, [corners[i]], [ids[i]], rvec, tvec, 
+                                      horizontal_distance, yaw_camera, self.filtered_yaw)
                         break
             
-            # 마커 미검출 처리
+            # 마커 미감지 시 처리
             if not target_detected:
                 self.consecutive_detections = 0
-                self.handle_marker_loss()
                 
+                # 1초간 마커 미감지 시 탐색 모드 시작 (더 빠른 반응)
+                if (rospy.Time.now() - self.last_marker_time).to_sec() > 1.0:
+                    if not self.search_mode:
+                        self.search_mode = True
+                        self.search_start_time = rospy.Time.now()
+                        self.search_phase = 0
+                        self.total_search_angle = 0.0
+                        # 마지막 위치가 왼쪽이면 왼쪽부터, 오른쪽이면 오른쪽부터 탐색
+                        if self.last_marker_position:
+                            self.search_direction = 1 if self.last_marker_position[0] > 0 else -1
+                        rospy.loginfo("Starting enhanced search mode...")
+                    
+                    # 개선된 탐색 모드 실행
+                    self.execute_enhanced_search()
+                else:
+                    # 잠시 정지
+                    self.stop_robot()
+                    
         except CvBridgeError as e:
             rospy.logerr(f"CvBridge Error: {e}")
         except Exception as e:
             rospy.logerr(f"Processing Error: {e}")
 
-    def update_sensor_fusion(self, yaw_camera):
-        """센서 퓨전으로 안정적인 각도 추정"""
-        if self.odom_received:
-            delta_odom = self.odom_yaw - self.last_odom_yaw
-            predicted_yaw = self.filtered_yaw - delta_odom
-            self.filtered_yaw = self.alpha * yaw_camera + (1 - self.alpha) * predicted_yaw
-            self.last_odom_yaw = self.odom_yaw
-        else:
-            self.filtered_yaw = yaw_camera
-
-    def handle_marker_loss(self):
-        """마커 손실 시 지능적 탐색"""
-        current_time = rospy.Time.now()
-        
-        # 1초간 마커 미검출 시 탐색 모드 시작
-        if (current_time - self.last_marker_time).to_sec() > 1.0:
-            if not self.search_mode:
-                self.search_mode = True
-                self.search_start_time = current_time
-                self.search_total_time = 0.0
-                self.search_phase = 0
-                self.docking_state = "SEARCHING"
-                rospy.loginfo("Starting intelligent search mode...")
-            
-            self.execute_smart_search()
-        else:
-            # 잠시 정지하여 마커 재검출 기회 제공
-            self.stop_robot()
-
-    def execute_smart_search(self):
-        """지능적 탐색 알고리즘"""
+    def execute_enhanced_search(self):
+        """개선된 탐색 패턴: 체계적인 좌우 스캔"""
         twist = Twist()
         elapsed = (rospy.Time.now() - self.search_start_time).to_sec()
         
-        if elapsed > 15.0:  # 15초 후 탐색 중단
-            rospy.logwarn("Search timeout! Stopping.")
-            self.stop_robot()
-            return
-        
-        # Phase 0: 제자리에서 360도 회전 탐색 (0~8초)
+        # 단계별 탐색 패턴
         if self.search_phase == 0:
-            if elapsed < 8.0:
-                twist.angular.z = 0.5 * self.search_direction
-                rospy.loginfo(f"Phase 0: Rotating in place ({elapsed:.1f}s)")
+            # 1단계: 마지막 위치 방향으로 빠른 회전 (2초)
+            if elapsed < 2.0:
+                twist.angular.z = self.search_direction * 0.8
+                rospy.loginfo(f"Search Phase 1: Quick turn {'right' if self.search_direction > 0 else 'left'}")
             else:
                 self.search_phase = 1
-                self.search_direction *= -1  # 방향 반전
-        
-        # Phase 1: 이동하며 회전 탐색 (8~12초)
+                self.search_start_time = rospy.Time.now()
+                
         elif self.search_phase == 1:
-            if elapsed < 12.0:
-                twist.linear.x = 0.1  # 천천히 이동
-                twist.angular.z = 0.4 * self.search_direction
-                rospy.loginfo(f"Phase 1: Moving and rotating ({elapsed:.1f}s)")
+            # 2단계: 반대 방향으로 천천히 스캔 (6초)
+            if elapsed < 6.0:
+                twist.angular.z = -self.search_direction * 0.4
+                rospy.loginfo(f"Search Phase 2: Slow scan {'left' if self.search_direction > 0 else 'right'}")
             else:
                 self.search_phase = 2
-                self.search_direction *= -1  # 다시 방향 반전
+                self.search_start_time = rospy.Time.now()
+                
+        elif self.search_phase == 2:
+            # 3단계: 원래 방향으로 복귀 (3초)
+            if elapsed < 3.0:
+                twist.angular.z = self.search_direction * 0.6
+                rospy.loginfo(f"Search Phase 3: Return to center")
+            else:
+                self.search_phase = 3
+                self.search_start_time = rospy.Time.now()
+                
+        elif self.search_phase == 3:
+            # 4단계: 360도 회전 탐색 (8초)
+            if elapsed < 8.0:
+                twist.angular.z = 0.5  # 천천히 한 바퀴
+                rospy.loginfo("Search Phase 4: 360 degree scan")
+            else:
+                # 탐색 실패
+                self.search_mode = False
+                self.search_phase = 0
+                rospy.logwarn("Search completed - marker not found!")
+                twist.linear.x = 0.0
+                twist.angular.z = 0.0
         
-        # Phase 2: 반대 방향으로 이동하며 탐색 (12~15초)
-        else:
-            twist.linear.x = 0.08
-            twist.angular.z = 0.6 * self.search_direction
-            rospy.loginfo(f"Phase 2: Final search ({elapsed:.1f}s)")
+        # 탐색 중 매우 느린 전진 (벽에 부딪히지 않도록)
+        if self.search_phase < 3:
+            twist.linear.x = 0.02
         
         self.cmd_pub.publish(twist)
 
-    def control_docking(self, distance, filtered_yaw, forward_distance):
-        """개선된 도킹 제어"""
+    def control_robot(self, distance, filtered_yaw):
         twist = Twist()
+        max_angular_speed = 0.6  # 회전 속도 제한 (더 부드럽게)
         
-        # 안전 거리 체크 (너무 가까우면 후진)
-        if forward_distance < self.safety_distance:
-            twist.linear.x = -0.1  # 후진
-            twist.angular.z = 0.0
-            self.docking_state = "BACKING"
-            rospy.logwarn(f"Too close! Backing up. Distance: {forward_distance*100:.1f}cm")
-        
-        # 도킹 완료 체크
-        elif forward_distance <= self.target_distance and abs(filtered_yaw) < self.angle_threshold:
+        # 도킹 완료 체크 (1~3cm 이내)
+        if distance <= 0.03:  # 3cm 이내
             twist.linear.x = 0.0
             twist.angular.z = 0.0
-            self.docking_state = "DOCKED"
-            rospy.loginfo("🎯 DOCKING COMPLETED! 🎯")
+            rospy.loginfo(f"DOCKING COMPLETED! Final distance: {distance*100:.1f}cm")
+            self.cmd_pub.publish(twist)
+            return
         
-        # 방향 정렬 단계
-        elif abs(filtered_yaw) > self.angle_threshold:
-            # 거리에 따라 회전 속도 조절
-            if distance > 0.5:  # 멀리 있을 때는 빠르게
-                angular_speed = 0.8
-            elif distance > 0.3:  # 중간 거리
-                angular_speed = 0.5
-            else:  # 가까이 있을 때는 천천히
-                angular_speed = 0.3
+        # 1. 정밀 방향 정렬 단계 (5.7° 이상 오차)
+        if abs(filtered_yaw) > self.angle_threshold:
+            # 각도에 따른 적응적 회전 속도
+            angular_speed = min(0.4, abs(filtered_yaw) * 2.0)
+            twist.angular.z = np.clip(angular_speed * np.sign(filtered_yaw), 
+                                    -max_angular_speed, max_angular_speed)
             
-            twist.angular.z = np.clip(angular_speed * np.sign(filtered_yaw), -0.8, 0.8)
-            twist.linear.x = 0.05  # 마커 추적을 위한 최소 전진
-            self.docking_state = "ALIGNING"
-            rospy.loginfo(f"ALIGNING: {math.degrees(filtered_yaw):.1f}°, Dist: {distance*100:.1f}cm")
+            # 정렬 중에는 매우 느린 전진 (마커 추적 유지)
+            twist.linear.x = 0.03
+            rospy.loginfo(f"ALIGNING: {math.degrees(filtered_yaw):.1f}°")
         
-        # 전진 단계
-        elif forward_distance > self.target_distance:
+        # 2. 정밀 접근 단계
+        else:
             # 미세 각도 조정
             twist.angular.z = 0.2 * filtered_yaw
             
-            # 거리 기반 속도 제어
-            remaining_distance = forward_distance - self.target_distance
-            if remaining_distance > 0.3:
-                speed = 0.15  # 빠른 접근
-            elif remaining_distance > 0.15:
-                speed = 0.1   # 중간 속도
-            else:
-                speed = 0.05  # 느린 정밀 접근
+            # 거리별 적응적 속도 제어
+            if distance > 0.20:  # 20cm 이상
+                twist.linear.x = 0.15
+            elif distance > 0.10:  # 10~20cm
+                twist.linear.x = 0.08
+            elif distance > 0.05:  # 5~10cm
+                twist.linear.x = 0.04
+            else:  # 5cm 이하 - 매우 느리게
+                twist.linear.x = 0.02
             
-            twist.linear.x = speed
-            self.docking_state = "APPROACHING"
-            rospy.loginfo(f"APPROACHING: {forward_distance*100:.1f}cm, Target: {self.target_distance*100:.1f}cm")
+            rospy.loginfo(f"APPROACHING: {distance*100:.1f}cm, Speed: {twist.linear.x:.3f}")
         
         self.cmd_pub.publish(twist)
 
     def stop_robot(self):
-        """로봇 정지"""
         twist = Twist()
         self.cmd_pub.publish(twist)
 
-    def visualize(self, image, corners, ids, rvec, tvec, distance, raw_yaw, filtered_yaw, forward_dist):
-        """시각화 및 디버깅 정보 표시"""
+    def visualize(self, image, corners, ids, rvec, tvec, distance, raw_yaw, filtered_yaw):
         # 마커 경계 및 축 표시
         aruco.drawDetectedMarkers(image, corners, np.array(ids))
         for i in range(len(ids)):
@@ -260,27 +254,39 @@ class ArucoDockingNode:
         center_x = int(np.mean(corner[:, 0]))
         center_y = int(np.mean(corner[:, 1]))
         
-        # 정보 표시
-        info_y = 30
-        cv2.putText(image, f"State: {self.docking_state}", (10, info_y), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        cv2.putText(image, f"Forward Dist: {forward_dist*100:.1f}cm", (10, info_y + 25), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        cv2.putText(image, f"Total Dist: {distance*100:.1f}cm", (10, info_y + 50), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        cv2.putText(image, f"Angle: {math.degrees(filtered_yaw):.1f}°", (10, info_y + 75), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-        cv2.putText(image, f"Detections: {self.consecutive_detections}", (10, info_y + 100), 
+        # 거리에 따른 색상 변경 (가까울수록 빨간색)
+        if distance <= 0.03:
+            color = (0, 0, 255)  # 빨간색 (도킹 완료)
+        elif distance <= 0.10:
+            color = (0, 165, 255)  # 주황색 (근접)
+        else:
+            color = (0, 255, 0)  # 초록색 (일반)
+        
+        # 상세한 디버깅 정보
+        cv2.putText(image, f"Dist: {distance*100:.1f}cm", (center_x, center_y - 60), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        cv2.putText(image, f"RawYaw: {math.degrees(raw_yaw):.1f}deg", (center_x, center_y - 40), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+        cv2.putText(image, f"FusedYaw: {math.degrees(filtered_yaw):.1f}deg", (center_x, center_y - 20), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        cv2.putText(image, f"Detections: {self.consecutive_detections}", (center_x, center_y), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
         
-        # 목표선 그리기
-        cv2.line(image, (center_x, 0), (center_x, image.shape[0]), (0, 255, 0), 2)
-        cv2.line(image, (0, center_y), (image.shape[1], center_y), (0, 255, 0), 2)
+        # 상태 표시
+        if self.search_mode:
+            status_text = f"SEARCH MODE - Phase {self.search_phase + 1}"
+            cv2.putText(image, status_text, (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        elif distance <= 0.03:
+            cv2.putText(image, "DOCKED!", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        else:
+            cv2.putText(image, "TRACKING", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         
-        # 도킹 완료 체크
-        if self.docking_state == "DOCKED":
-            cv2.putText(image, "DOCKING SUCCESS!", (center_x - 100, center_y - 50), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
+        # 목표 거리 가이드라인
+        cv2.putText(image, f"Target: 1-3cm", (10, 60), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
         cv2.imshow("ArUco Docking", image)
         cv2.waitKey(1)
