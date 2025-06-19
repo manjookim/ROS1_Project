@@ -207,7 +207,7 @@ class ArucoDockingNode:
         max_angular_speed = 0.6  # 회전 속도 제한 (더 부드럽게)
         
         # 도킹 완료 체크 (1~3cm 이내)
-        if distance <= 0.03 and abs(filtered_yaw) < self.angle_threshold:  # 3cm 이내
+        if distance <= 0.02 and abs(filtered_yaw) < self.angle_threshold:  # 3cm 이내
             twist.linear.x = 0.0
             twist.angular.z = 0.0
             rospy.loginfo(f"[DOCKING COMPLETED] Distance: {distance*100:.1f}cm, Yaw: {math.degrees(filtered_yaw):.1f}°")
@@ -215,7 +215,7 @@ class ArucoDockingNode:
             return
         
         # 1. 정밀 방향 정렬 단계 (5.7° 이상 오차)
-        if abs(filtered_yaw) > angle_threshold:
+        if abs(filtered_yaw) > self.angle_threshold:
             # 각도에 따른 적응적 회전 속도
             angular_speed = min(0.4, abs(filtered_yaw) * 2.0)
             twist.angular.z = np.clip(angular_speed * np.sign(filtered_yaw), 
